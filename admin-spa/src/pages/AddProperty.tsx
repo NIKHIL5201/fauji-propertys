@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { useAuth } from '../AuthContext'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000'
 
@@ -7,14 +8,15 @@ const AddProperty: React.FC = () => {
   const [price, setPrice] = useState('')
   const [files, setFiles] = useState<FileList | null>(null)
   const [loading, setLoading] = useState(false)
+  const { apiFetch } = useAuth()
 
   const handleFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFiles(e.target.files)
   }
 
   const uploadToCloudinary = async (file: File) => {
-    // Request signature from backend
-    const signRes = await fetch(`${API_URL}/api/uploads/sign`, {
+    // Request signature from backend using apiFetch to include auth
+    const signRes = await apiFetch(`${API_URL}/api/uploads/sign`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ folder: 'fauji-properties' }),
@@ -51,7 +53,8 @@ const AddProperty: React.FC = () => {
       }
 
       const body = { title, price: Number(price || 0), images }
-      const createRes = await fetch(`${API_URL}/api/properties`, {
+      // Use apiFetch so Authorization header is included and refresh handled
+      const createRes = await apiFetch(`${API_URL}/api/properties`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
