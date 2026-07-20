@@ -1,13 +1,75 @@
 import React, { useState } from 'react'
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000'
+
 const AddProperty: React.FC = () => {
   const [title, setTitle] = useState('')
   const [price, setPrice] = useState('')
+  const [files, setFiles] = useState<FileList | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const handleFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFiles(e.target.files)
+  }
+
+  const uploadToCloudinary = async (file: File) => {
+    // Request signature from backend
+    const signRes = await fetch(`${API_URL}/api/uploads/sign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder: 'fauji-properties' }),
+    })
+    if (!signRes.ok) throw new Error('Failed to get upload signature')
+    const { signature, timestamp, apiKey, cloudName, folder } = await signRes.json()
+
+    const form = new FormData()
+    form.append('file', file)
+    form.append('api_key', apiKey)
+    form.append('timestamp', timestamp)
+    form.append('signature', signature)
+    if (folder) form.append('folder', folder)
+
+    const url = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`
+    const res = await fetch(url, { method: 'POST', body: form })
+    if (!res.ok) throw new Error('Cloudinary upload failed')
+    return await res.json()
+  }
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // POST to backend API /api/properties (to be implemented)
-    alert('Property submitted (scaffold)')
+    setLoading(true)
+    try {
+      const images: any[] = []
+      if (files && files.length) {
+        for (let i = 0; i < files.length; i++) {
+          // upload sequentially to simplify error handling
+          // could be parallelized
+          // eslint-disable-next-line no-await-in-loop
+          const uploadRes = await uploadToCloudinary(files[i])
+          images.push({ public_id: uploadRes.public_id, url: uploadRes.secure_url })
+        }
+      }
+
+      const body = { title, price: Number(price || 0), images }
+      const createRes = await fetch(`${API_URL}/api/properties`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!createRes.ok) {
+        const text = await createRes.text()
+        throw new Error(`Create property failed: ${text}`)
+      }
+      alert('Property created')
+      setTitle('')
+      setPrice('')
+      setFiles(null)
+    } catch (err: any) {
+      console.error(err)
+      alert('Error: ' + (err.message || 'Unknown'))
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -24,10 +86,10 @@ const AddProperty: React.FC = () => {
         </div>
         <div style={{marginBottom: 8}}>
           <label>Images</label>
-          <input type="file" accept="image/*" multiple />
-          <div style={{fontSize: 12, color: '#666'}}>Images will be uploaded directly to Cloudinary in production.</div>
+          <input type="file" accept="image/*" multiple onChange={handleFiles} />
+          <div style={{fontSize: 12, color: '#666'}}>Images are uploaded to Cloudinary and then property is created.</div>
         </div>
-        <button type="submit" style={{padding: '8px 12px'}}>Create Property</button>
+        <button type="submit" style={{padding: '8px 12px'}} disabled={loading}>{loading ? 'Saving...' : 'Create Property'}</button>
       </form>
     </div>
   )
